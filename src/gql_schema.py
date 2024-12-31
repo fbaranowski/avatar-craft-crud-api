@@ -1,16 +1,14 @@
 import json
+from typing import List
+
 import strawberry
-import avatar_creator
-from typing import List, Optional
-from fastapi import Request, HTTPException
-from strawberry.asgi import GraphQL
-from strawberry.fastapi import GraphQLRouter
-from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.future import select
-from models import User, Avatar
+from sqlalchemy.orm import joinedload
+from strawberry.asgi import GraphQL
+
+from avatar_creator import create_avatar, update_avatar
 from db_session import get_db_session
-import random
-import string
+from models import Avatar, User
 
 
 @strawberry.type
@@ -30,6 +28,7 @@ class UserType:
 
 @strawberry.type
 class Query:
+
     @strawberry.field
     async def users(self, email: str | None = None) -> List[UserType]:
         async with get_db_session() as session:
@@ -45,13 +44,23 @@ class Query:
                 UserType(
                     id=user.id,
                     mail=user.mail,
-                    avatars=[AvatarType(id=avatar.id, name=avatar.name, url=avatar.url, type=avatar.type) for avatar in user.avatars]
+                    avatars=[
+                        AvatarType(
+                            id=avatar.id,
+                            name=avatar.name,
+                            url=avatar.url,
+                            type=avatar.type,
+                        )
+                        for avatar in user.avatars
+                    ],
                 )
                 for user in users
             ]
 
     @strawberry.field
-    async def avatars(self, email: str, avatar_id: int | None = None, avatar_type: str | None = None) -> List[AvatarType]:
+    async def avatars(
+        self, email: str, avatar_id: int | None = None, avatar_type: str | None = None
+    ) -> List[AvatarType]:
 
         async with get_db_session() as session:
             user = await session.execute(select(User).where(User.mail == email))
@@ -68,10 +77,7 @@ class Query:
 
             return [
                 AvatarType(
-                    id=avatar.id,
-                    name=avatar.name,
-                    url=avatar.url,
-                    type=avatar.type
+                    id=avatar.id, name=avatar.name, url=avatar.url, type=avatar.type
                 )
                 for avatar in avatars
             ]
@@ -79,17 +85,20 @@ class Query:
 
 @strawberry.type
 class Mutation:
+
     @strawberry.mutation
     async def create_user(self, email: str) -> UserType:
         async with get_db_session() as session:
-            existing_user = await session.execute(select(User).where(User.mail == email))
+            existing_user = await session.execute(
+                select(User).where(User.mail == email)
+            )
             existing_user_obj = existing_user.unique().scalar_one_or_none()
 
             if existing_user_obj:
                 return UserType(
                     id=existing_user_obj.id,
                     mail=existing_user_obj.mail,
-                    avatars=existing_user_obj.avatars
+                    avatars=existing_user_obj.avatars,
                 )
 
             new_user = User(mail=email)
@@ -97,35 +106,53 @@ class Mutation:
             await session.commit()
             await session.refresh(new_user)
 
-            return UserType(id=new_user.id, mail=new_user.mail, avatars=new_user.avatars)
+            return UserType(
+                id=new_user.id, mail=new_user.mail, avatars=new_user.avatars
+            )
 
     @strawberry.mutation
     async def create_avatar(self, email: str, ai_model: str, prompt: str) -> AvatarType:
-        # image_url = ''.join(random.choices(string.ascii_letters, k=7))
-        image_url = await avatar_creator.create_avatar(model=ai_model, prompt=prompt)
+        image_url = await create_avatar(model=ai_model, prompt=prompt)
 
         async with get_db_session() as session:
             user = await session.execute(select(User).where(User.mail == email))
             user_obj = user.unique().scalar_one_or_none()
-            new_avatar = Avatar(url=image_url, user_id=user_obj.id, name=prompt, type=ai_model)
+            new_avatar = Avatar(
+                url=image_url, user_id=user_obj.id, name=prompt, type=ai_model
+            )
             session.add(new_avatar)
             await session.commit()
 
-            return AvatarType(id=new_avatar.id, name=new_avatar.name, url=new_avatar.url, type=new_avatar.type)
+            return AvatarType(
+                id=new_avatar.id,
+                name=new_avatar.name,
+                url=new_avatar.url,
+                type=new_avatar.type,
+            )
 
     @strawberry.mutation
-    async def edit_avatar(self, email: str, avatars_urls: List[str], ai_model: str, prompt: str) -> AvatarType:
-        # image_url = ''.join(random.choices(string.ascii_letters, k=7))
-        image_url = await avatar_creator.update_avatar(model=ai_model, prompt=prompt, input_avatars=avatars_urls)
+    async def edit_avatar(
+        self, email: str, avatars_urls: List[str], ai_model: str, prompt: str
+    ) -> AvatarType:
+        image_url = await update_avatar(
+            model=ai_model, prompt=prompt, input_avatars=avatars_urls
+        )
 
         async with get_db_session() as session:
             user = await session.execute(select(User).where(User.mail == email))
             user_obj = user.unique().scalar_one_or_none()
-            new_avatar = Avatar(url=image_url, user_id=user_obj.id, name=prompt, type=ai_model)
+            new_avatar = Avatar(
+                url=image_url, user_id=user_obj.id, name=prompt, type=ai_model
+            )
             session.add(new_avatar)
             await session.commit()
 
-            return AvatarType(id=new_avatar.id, name=new_avatar.name, url=new_avatar.url, type=new_avatar.type)
+            return AvatarType(
+                id=new_avatar.id,
+                name=new_avatar.name,
+                url=new_avatar.url,
+                type=new_avatar.type,
+            )
 
     @strawberry.mutation
     async def delete_avatar(self, email: str, avatar_id: int) -> str:

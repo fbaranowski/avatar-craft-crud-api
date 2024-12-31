@@ -1,24 +1,19 @@
 import uuid
 from typing import List
-from runware import Runware, IImageInference, IPhotoMaker
 
-# models = {'anime': 'civitai:721039@806265', 'cartoon': 'civitai:30240@125771', 'lego': 'civitai:306814@344398'}
-# models = ['civitai:721039@806265', 'civitai:30240@125771', 'civitai:306814@344398']
-# prompts = [
-#     'samurai with red armor in anime style',
-#     'tea pot with eyes and wings in cartoon style',
-#     'star wars sith with white badass mask lego minifigure'
-# ]
+from runware import IImageInference, IPhotoMaker, Runware
+
+from settings import RunwareSettings
 
 MODELS = {
-    'anime': 'civitai:30240@125771',
-    'cartoon': 'civitai:30240@125771',
-    'lego': 'civitai:306814@344398'
+    "anime": "civitai:30240@125771",
+    "cartoon": "civitai:30240@125771",
+    "lego": "civitai:306814@344398",
 }
 
 
 async def create_avatar(model: str, prompt: str) -> str:
-    runware = Runware(api_key='Xso44mOdoBxmDa7ATxxbck8ndw5rpuyo')
+    runware = Runware(api_key=RunwareSettings.RUNWARE_API_KEY)
     await runware.connect()
 
     request_image = IImageInference(
@@ -26,7 +21,7 @@ async def create_avatar(model: str, prompt: str) -> str:
         model=MODELS[model],
         numberResults=1,
         height=512,
-        width=512
+        width=512,
     )
     image_data = await runware.imageInference(requestImage=request_image)
 
@@ -35,7 +30,7 @@ async def create_avatar(model: str, prompt: str) -> str:
 
 
 async def update_avatar(model: str, prompt: str, input_avatars: List[str]) -> str:
-    runware = Runware(api_key='Xso44mOdoBxmDa7ATxxbck8ndw5rpuyo')
+    runware = Runware(api_key=RunwareSettings.RUNWARE_API_KEY)
     await runware.connect()
 
     request_image = IPhotoMaker(
@@ -51,9 +46,3 @@ async def update_avatar(model: str, prompt: str, input_avatars: List[str]) -> st
 
     for data in image_data:
         return data.imageURL
-
-
-# ToonYou                       cartoons        civitai:30240@125771 - ten dla anime i cartoons
-# Photon - LCM                  lego            civitai:306814@344398 - ten dla lego
-
-# 'civitai:25694@143906'
