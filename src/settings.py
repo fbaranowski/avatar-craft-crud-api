@@ -1,11 +1,5 @@
 import os
 
-from dotenv import find_dotenv, load_dotenv
-
-find_dotenv()
-
-load_dotenv()
-
 
 class DbSettings:
     DB_USER = os.getenv("DB_USER")

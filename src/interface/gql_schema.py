@@ -6,8 +6,8 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
 from strawberry.asgi import GraphQL
 
-from avatar_creator import create_avatar, update_avatar
-from db_session import get_db_session
+from core.avatar_creator import create_avatar, update_avatar
+from database.db_session import get_db_session
 from models import Avatar, User
 
 
@@ -65,6 +65,7 @@ class Query:
         async with get_db_session() as session:
             user = await session.execute(select(User).where(User.mail == email))
             user_obj = user.unique().scalar_one_or_none()
+
             query = select(Avatar).where(Avatar.user_id == user_obj.id)
 
             if avatar_id:
@@ -89,16 +90,16 @@ class Mutation:
     @strawberry.mutation
     async def create_user(self, email: str) -> UserType:
         async with get_db_session() as session:
-            existing_user = await session.execute(
+            existing_user_query = await session.execute(
                 select(User).where(User.mail == email)
             )
-            existing_user_obj = existing_user.unique().scalar_one_or_none()
+            existing_user = existing_user_query.unique().scalar_one_or_none()
 
-            if existing_user_obj:
+            if existing_user:
                 return UserType(
-                    id=existing_user_obj.id,
-                    mail=existing_user_obj.mail,
-                    avatars=existing_user_obj.avatars,
+                    id=existing_user.id,
+                    mail=existing_user.mail,
+                    avatars=existing_user.avatars,
                 )
 
             new_user = User(mail=email)
@@ -115,10 +116,10 @@ class Mutation:
         image_url = await create_avatar(model=ai_model, prompt=prompt)
 
         async with get_db_session() as session:
-            user = await session.execute(select(User).where(User.mail == email))
-            user_obj = user.unique().scalar_one_or_none()
+            user_query = await session.execute(select(User).where(User.mail == email))
+            user = user_query.unique().scalar_one_or_none()
             new_avatar = Avatar(
-                url=image_url, user_id=user_obj.id, name=prompt, type=ai_model
+                url=image_url, user_id=user.id, name=prompt, type=ai_model
             )
             session.add(new_avatar)
             await session.commit()
@@ -132,36 +133,44 @@ class Mutation:
 
     @strawberry.mutation
     async def edit_avatar(
-        self, email: str, avatars_urls: List[str], ai_model: str, prompt: str
+        self, email: str, avatar_url: str, ai_model: str, prompt: str
     ) -> AvatarType:
+        avatar_url_as_list = [avatar_url]
+
         image_url = await update_avatar(
-            model=ai_model, prompt=prompt, input_avatars=avatars_urls
+            model=ai_model, prompt=prompt, input_avatars=avatar_url_as_list
         )
 
         async with get_db_session() as session:
-            user = await session.execute(select(User).where(User.mail == email))
-            user_obj = user.unique().scalar_one_or_none()
-            new_avatar = Avatar(
-                url=image_url, user_id=user_obj.id, name=prompt, type=ai_model
+            user_query = await session.execute(select(User).where(User.mail == email))
+            user = user_query.unique().scalar_one_or_none()
+
+            avatar_query = await session.execute(
+                select(Avatar).where(
+                    Avatar.url == avatar_url, Avatar.user_id == user.id
+                )
             )
-            session.add(new_avatar)
+            avatar = avatar_query.unique().scalar_one_or_none()
+
+            avatar.url = image_url
+
             await session.commit()
 
             return AvatarType(
-                id=new_avatar.id,
-                name=new_avatar.name,
-                url=new_avatar.url,
-                type=new_avatar.type,
+                id=avatar.id,
+                name=avatar.name,
+                url=avatar.url,
+                type=avatar.type,
             )
 
     @strawberry.mutation
     async def delete_avatar(self, email: str, avatar_id: int) -> str:
         async with get_db_session() as session:
-            user = await session.execute(select(User).where(User.mail == email))
-            user_obj = user.unique().scalar_one_or_none()
+            user_query = await session.execute(select(User).where(User.mail == email))
+            user = user_query.unique().scalar_one_or_none()
             avatar = await session.get(Avatar, avatar_id)
 
-            if user_obj.id == avatar.user_id:
+            if user.id == avatar.user_id:
                 await session.delete(avatar)
                 await session.commit()
                 return json.dumps({"message": "Avatar deleted successfully"})

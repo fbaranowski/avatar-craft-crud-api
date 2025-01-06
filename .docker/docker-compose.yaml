@@ -10,7 +10,7 @@ services:
       crud-db:
         condition: service_healthy
     env_file:
-      - ../.env
+      - .env
     environment:
       - DB_USER=${DB_USER}
       - DB_PASSWORD=${DB_PASSWORD}
@@ -19,13 +19,14 @@ services:
       - DB_NAME=${DB_NAME}
     networks:
       - crud-network
+      - api-gateway-network
 
   crud-db:
     image: postgres:15-alpine
     ports:
       - "5432:5432"
     env_file:
-      - ../.env
+      - .env
     environment:
     - POSTGRES_USER=${DB_USER}
     - POSTGRES_PASSWORD=${DB_PASSWORD}
@@ -42,3 +43,5 @@ services:
 
 networks:
   crud-network:
+
+  api-gateway-network:

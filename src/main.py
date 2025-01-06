@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 
-from db_engine import engine
-from gql_schema import graphql_app
+from database.db_engine import engine
+from interface.gql_schema import graphql_app
 from models import Base
 
 app = FastAPI()
