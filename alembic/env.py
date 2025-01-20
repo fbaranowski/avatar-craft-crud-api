@@ -1,12 +1,16 @@
 import asyncio
+import os
+import dotenv
 from logging.config import fileConfig
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
 from asyncpg import Connection
 from src.models import Base
-from src.database.db_engine import DATABASE_URL
 
+
+dotenv.find_dotenv()
+dotenv.load_dotenv()
 
 config = context.config
 
@@ -14,6 +18,11 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
+
+DATABASE_URL = (
+    f"postgresql+asyncpg://{os.getenv("DB_USER")}:{os.getenv("DB_PASSWORD")}@localhost:"
+    f"5433/{os.getenv("DB_NAME")}"
+)
 
 config.set_main_option('sqlalchemy.url', DATABASE_URL)
 

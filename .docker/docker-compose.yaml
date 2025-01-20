@@ -14,17 +14,18 @@ services:
     environment:
       - DB_USER=${DB_USER}
       - DB_PASSWORD=${DB_PASSWORD}
-      - DB_HOST=${DB_HOST}
-      - DB_PORT=${DB_PORT}
       - DB_NAME=${DB_NAME}
+    volumes:
+      - ../downloads:/downloads
     networks:
       - crud-network
       - api-gateway-network
+      - avatar-generator-network
 
   crud-db:
     image: postgres:15-alpine
     ports:
-      - "5432:5432"
+      - "5433:5432"
     env_file:
       - .env
     environment:
@@ -41,7 +42,20 @@ services:
     networks:
       - crud-network
 
+  rabbitmq:
+    image: rabbitmq:4.0.5-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    env_file:
+      - .env
+    networks:
+      - avatar-generator-network
+      - crud-network
+
 networks:
   crud-network:
 
   api-gateway-network:
+
+  avatar-generator-network:

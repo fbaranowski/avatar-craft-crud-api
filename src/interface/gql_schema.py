@@ -1,20 +1,24 @@
 import json
+import uuid
 from typing import List
 
 import strawberry
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
+from sqlalchemy.sql.expression import literal
 from strawberry.asgi import GraphQL
 
-from core.avatar_creator import create_avatar, update_avatar
+from core.rabbitmq import RabbitMQProducer
 from database.db_session import get_db_session
+from interface.exceptions import UserNotFoundException
 from models import Avatar, User
+from s3.s3_handler import download_file_from_s3
 
 
 @strawberry.type
 class AvatarType:
     id: int
-    url: str
+    uuid: uuid.UUID
     name: str
     type: str
 
@@ -48,7 +52,7 @@ class Query:
                         AvatarType(
                             id=avatar.id,
                             name=avatar.name,
-                            url=avatar.url,
+                            uuid=avatar.uuid,
                             type=avatar.type,
                         )
                         for avatar in user.avatars
@@ -66,19 +70,25 @@ class Query:
             user = await session.execute(select(User).where(User.mail == email))
             user_obj = user.unique().scalar_one_or_none()
 
-            query = select(Avatar).where(Avatar.user_id == user_obj.id)
+            if not user_obj:
+                raise UserNotFoundException(email)
 
-            if avatar_id:
-                query = query.where(Avatar.id == avatar_id)
+            query = select(Avatar).where(Avatar.user_id == literal(user_obj.id))
+
             if avatar_type:
                 query = query.where(Avatar.type == avatar_type)
+            if avatar_id:
+                query = query.where(Avatar.id == avatar_id)
 
             result = await session.execute(query)
             avatars = result.unique().scalars().all()
 
+            for avatar in avatars:
+                await download_file_from_s3(str(avatar.uuid))
+
             return [
                 AvatarType(
-                    id=avatar.id, name=avatar.name, url=avatar.url, type=avatar.type
+                    id=avatar.id, uuid=avatar.uuid, name=avatar.name, type=avatar.type
                 )
                 for avatar in avatars
             ]
@@ -113,61 +123,44 @@ class Mutation:
 
     @strawberry.mutation
     async def create_avatar(self, email: str, ai_model: str, prompt: str) -> AvatarType:
-        image_url = await create_avatar(model=ai_model, prompt=prompt)
-
         async with get_db_session() as session:
             user_query = await session.execute(select(User).where(User.mail == email))
             user = user_query.unique().scalar_one_or_none()
+
+            if not user:
+                raise UserNotFoundException(email)
+
             new_avatar = Avatar(
-                url=image_url, user_id=user.id, name=prompt, type=ai_model
+                uuid=uuid.uuid4(), user_id=user.id, name=prompt, type=ai_model
             )
             session.add(new_avatar)
             await session.commit()
 
-            return AvatarType(
-                id=new_avatar.id,
-                name=new_avatar.name,
-                url=new_avatar.url,
-                type=new_avatar.type,
-            )
+            body = {
+                "uuid": str(new_avatar.uuid),
+                "ai_model": ai_model,
+                "prompt": prompt,
+            }
 
-    @strawberry.mutation
-    async def edit_avatar(
-        self, email: str, avatar_url: str, ai_model: str, prompt: str
-    ) -> AvatarType:
-        avatar_url_as_list = [avatar_url]
+            async with RabbitMQProducer() as producer:
+                await producer.publish_message(message=body)
 
-        image_url = await update_avatar(
-            model=ai_model, prompt=prompt, input_avatars=avatar_url_as_list
+        return AvatarType(
+            id=new_avatar.id,
+            uuid=new_avatar.uuid,
+            name=new_avatar.name,
+            type=new_avatar.type,
         )
-
-        async with get_db_session() as session:
-            user_query = await session.execute(select(User).where(User.mail == email))
-            user = user_query.unique().scalar_one_or_none()
-
-            avatar_query = await session.execute(
-                select(Avatar).where(
-                    Avatar.url == avatar_url, Avatar.user_id == user.id
-                )
-            )
-            avatar = avatar_query.unique().scalar_one_or_none()
-
-            avatar.url = image_url
-
-            await session.commit()
-
-            return AvatarType(
-                id=avatar.id,
-                name=avatar.name,
-                url=avatar.url,
-                type=avatar.type,
-            )
 
     @strawberry.mutation
     async def delete_avatar(self, email: str, avatar_id: int) -> str:
         async with get_db_session() as session:
             user_query = await session.execute(select(User).where(User.mail == email))
             user = user_query.unique().scalar_one_or_none()
+
+            if not user:
+                raise UserNotFoundException(email)
+
             avatar = await session.get(Avatar, avatar_id)
 
             if user.id == avatar.user_id:

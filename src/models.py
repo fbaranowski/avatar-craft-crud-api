@@ -1,6 +1,8 @@
+import uuid
 from typing import List
 
 from sqlalchemy import ForeignKey, String
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -18,7 +20,9 @@ class User(Base):
 class Avatar(Base):
     __tablename__ = "avatar"
 
-    url: Mapped[str] = mapped_column(String(), unique=True)
+    uuid: Mapped[UUID] = mapped_column(
+        UUID(as_uuid=True), default=uuid.uuid4, unique=True, nullable=False
+    )
     name: Mapped[str] = mapped_column(String(), nullable=True)
     type: Mapped[str] = mapped_column(String(), nullable=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("user.id"))

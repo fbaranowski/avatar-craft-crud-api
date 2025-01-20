@@ -10,8 +10,9 @@ sqlalchemy = "*"
 strawberry-graphql = {extras = ["fastapi"], version = "*"}
 python-dotenv = "*"
 asyncpg = "*"
-runware = "*"
 alembic = "*"
+aio-pika = "*"
+aioboto3 = "*"
 
 [dev-packages]
 black = "*"
