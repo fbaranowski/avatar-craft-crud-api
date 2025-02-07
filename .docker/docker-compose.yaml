@@ -19,7 +19,8 @@ services:
       - ../downloads:/downloads
     networks:
       - crud-network
-      - api-gateway-network
+      - crud-db-network
+      - rabbitmq-network
       - avatar-generator-network
 
   crud-db:
@@ -40,7 +41,7 @@ services:
       timeout: 30s
       retries: 6
     networks:
-      - crud-network
+      - crud-db-network
 
   rabbitmq:
     image: rabbitmq:4.0.5-management-alpine
@@ -50,12 +51,14 @@ services:
     env_file:
       - .env
     networks:
-      - avatar-generator-network
-      - crud-network
+      - rabbitmq-network
 
 networks:
   crud-network:
 
-  api-gateway-network:
-
   avatar-generator-network:
+    external: true
+
+  crud-db-network:
+
+  rabbitmq-network:

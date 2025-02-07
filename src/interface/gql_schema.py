@@ -1,5 +1,7 @@
+import base64
 import json
 import uuid
+from pathlib import Path
 from typing import List
 
 import strawberry
@@ -10,9 +12,11 @@ from strawberry.asgi import GraphQL
 
 from core.rabbitmq import RabbitMQProducer
 from database.db_session import get_db_session
-from interface.exceptions import UserNotFoundException
+from interface.exceptions import (AvatarDoesNotExistException,
+                                  UserNotFoundException)
 from models import Avatar, User
 from s3.s3_handler import download_file_from_s3
+from s3.settings import AWSSettings
 
 
 @strawberry.type
@@ -63,11 +67,22 @@ class Query:
 
     @strawberry.field
     async def avatars(
-        self, email: str, avatar_id: int | None = None, avatar_type: str | None = None
+        self,
+        email: str,
+        avatar_id: int | None = None,
+        avatar_type: str | None = None,
+        shared_to_email: str | None = None,
+        shared_from_email: str | None = None,
     ) -> List[AvatarType]:
 
         async with get_db_session() as session:
-            user = await session.execute(select(User).where(User.mail == email))
+            if shared_to_email == email:
+                user = await session.execute(
+                    select(User).where(User.mail == shared_from_email)
+                )
+            else:
+                user = await session.execute(select(User).where(User.mail == email))
+
             user_obj = user.unique().scalar_one_or_none()
 
             if not user_obj:
@@ -83,15 +98,53 @@ class Query:
             result = await session.execute(query)
             avatars = result.unique().scalars().all()
 
-            for avatar in avatars:
-                await download_file_from_s3(str(avatar.uuid))
-
             return [
                 AvatarType(
                     id=avatar.id, uuid=avatar.uuid, name=avatar.name, type=avatar.type
                 )
                 for avatar in avatars
             ]
+
+    @strawberry.field
+    async def download_avatar(
+        self,
+        email: str,
+        avatar_uuid: str,
+        shared_to_email: str | None = None,
+        shared_from_email: str | None = None,
+    ) -> str:
+        async with get_db_session() as session:
+            if shared_to_email == email:
+                user = await session.execute(
+                    select(User).where(User.mail == shared_from_email)
+                )
+            else:
+                user = await session.execute(select(User).where(User.mail == email))
+
+            user_obj = user.unique().scalar_one_or_none()
+
+            if not user_obj:
+                raise UserNotFoundException(email)
+
+            avatar = await session.execute(
+                select(Avatar).where(Avatar.user_id == literal(user_obj.id))
+            )
+            avatar_obj = avatar.unique().scalar_one_or_none()
+
+            if not avatar_obj:
+                raise AvatarDoesNotExistException(avatar_uuid)
+
+        file_path = Path(AWSSettings.DOWNLOADS_PATH) / f"{avatar_uuid}.jpg"
+
+        if not file_path.exists():
+            await download_file_from_s3(avatar_uuid)
+
+        with open(file_path, "rb") as file:
+            file_bytes = file.read()
+
+        base64_bytes = base64.b64encode(file_bytes).decode("utf-8")
+
+        return base64_bytes
 
 
 @strawberry.type
