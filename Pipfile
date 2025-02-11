@@ -1,0 +1,22 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+fastapi = {extras = ["standard"], version = "*"}
+uvicorn = "*"
+sqlalchemy = "*"
+strawberry-graphql = {extras = ["fastapi"], version = "*"}
+python-dotenv = "*"
+asyncpg = "*"
+alembic = "*"
+aio-pika = "*"
+aioboto3 = "*"
+
+[dev-packages]
+black = "*"
+isort = "*"
+
+[requires]
+python_version = "3.12"
